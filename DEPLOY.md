@@ -322,6 +322,13 @@ export API_KEY=$(grep -E '^API_KEY=' .env | cut -d= -f2-)
 # a placeholder, purely to exercise the cycle
 sed -i 's/^TOKEN_ADDRESS=.*/TOKEN_ADDRESS=0x0000000000000000000000000000000000000001/' .env
 pm2 restart artificialneko-bot --update-env
+
+# WAIT for the port. `pm2 restart` returns as soon as it signals the process,
+# but the bot connects to MongoDB BEFORE it listens on 3100 — on a hosted URI
+# that is a remote round trip, so a curl on the next line gets "connection
+# refused" from a bot that is starting perfectly normally.
+until curl -sf -H "x-api-key: $API_KEY" http://127.0.0.1:3100/status >/dev/null; do sleep 1; done
+
 curl -H "x-api-key: $API_KEY" -X POST http://127.0.0.1:3100/run
 ```
 
