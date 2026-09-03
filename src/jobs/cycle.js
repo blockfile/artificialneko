@@ -44,12 +44,12 @@ const { swapQuoteForGas, describeOutcome: describeGasSwap } = require('../evm/ga
 const { provider } = require('../evm/provider');
 
 /**
- * Split a claim three ways. Pure, so the invariant that the legs re-add to the
+ * Split a claim four ways. Pure, so the invariant that the legs re-add to the
  * claim is directly testable.
  *
- * The dev cut is the REMAINDER rather than its own percentage, so the three can
- * never disagree with the claim: at the default 80/20 it is exactly zero, and it
- * only appears when REWARD_PCT + BURN_PCT total under 100.
+ * The dev cut is the REMAINDER rather than its own percentage, so the four can
+ * never disagree with the claim: at the default 90/0/10 it is exactly zero, and
+ * it only appears when REWARD_PCT + BURN_PCT + GAS_PCT total under 100.
  */
 function splitClaim(claimedQuote) {
   // Round to 9 places and normalise negative zero. At a split that consumes the
