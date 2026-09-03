@@ -256,3 +256,93 @@ test('the bar shows what can trigger a payout; locked fees ride alongside it', a
     _resetState();
   }
 });
+
+// ── planTasks: how often we LOOK vs how often we may PAY ───────────────────
+// The poll writes the fee gauge the site renders, so it has to stay frequent.
+// Paying out has to be rare. Those are two different questions and therefore
+// two different schedules.
+
+const { planTasks } = require('./scheduler');
+
+test('the gauge task looks often and is never allowed to pay', () => {
+  const tasks = planTasks({ pollSchedule: '* * * * *', triggerSchedule: '0 * * * *' });
+  assert.strictEqual(tasks.length, 2);
+  const gauge = tasks.find((t) => t.schedule === '* * * * *');
+  assert.strictEqual(gauge.mayFire, false, 'a gauge tick must never run a cycle');
+  const trigger = tasks.find((t) => t.schedule === '0 * * * *');
+  assert.strictEqual(trigger.mayFire, true);
+});
+
+test('identical schedules collapse to ONE firing task', () => {
+  // Two tasks on the same minute race for the isRunning flag, and whichever
+  // loses is dropped — so half the trigger ticks would silently vanish and the
+  // bot would look like it randomly skipped an hour. An operator who wants
+  // "just check hourly" sets both keys the same, so this is the likely typo.
+  const tasks = planTasks({ pollSchedule: '0 * * * *', triggerSchedule: '0 * * * *' });
+  assert.strictEqual(tasks.length, 1);
+  assert.strictEqual(tasks[0].mayFire, true, 'the surviving task must be the one that pays');
+});
+
+// ── mayFire: a gauge tick reads, prices and reports, but never pays ────────
+
+test('a gauge tick never runs a cycle, however full the tank', async () => {
+  _resetState();
+  const out = await pollOnce('gauge', deps({
+    mayFire: false,
+    escrowBalanceQuote: async () => 10, // $1500 at the test price — far over the $100 gate
+    runCycle: async () => { throw new Error('a gauge tick must never pay money out'); },
+  }));
+  assert.strictEqual(out.ran, false);
+});
+
+test('a gauge tick above the threshold records collecting, not distributing', async () => {
+  // The site holds its launch animation on "distributing". Saying it at 13:40,
+  // twenty minutes before a distribution can happen, announces a payout that is
+  // not imminent — the same over-promise the locked-fee bar fix removed.
+  _resetState();
+  const recorded = [];
+  const repo = require('../db/repository');
+  const realSet = repo.setDistributionState;
+  repo.setDistributionState = async (patch) => { recorded.push(patch); };
+
+  try {
+    await pollOnce('gauge', deps({
+      mayFire: false,
+      escrowBalanceQuote: async () => 10,
+      runCycle: async () => ({ id: 1, status: 'complete' }),
+    }));
+    assert.strictEqual(recorded[0].status, 'collecting');
+  } finally {
+    repo.setDistributionState = realSet;
+    _resetState();
+  }
+});
+
+test('a gauge tick above the threshold says it is WAITING, not that it is short', async () => {
+  // "$1500 >= $100" and "not yet time" are different states and the log has to
+  // tell them apart, or a full tank that has not fired looks like a bug.
+  _resetState();
+  const out = await pollOnce('gauge', deps({
+    mayFire: false,
+    escrowBalanceQuote: async () => 10,
+    runCycle: async () => ({ id: 1, status: 'complete' }),
+  }));
+  assert.strictEqual(out.ran, false);
+  assert.match(String(out.reason), /waiting/i);
+  assert.strictEqual(out.usd, 1500, 'the tick still reports what it priced');
+});
+
+test('a typo in either schedule is refused by name, before anything is registered', () => {
+  // A typo'd cron string must not half-start the bot — the poll registered and
+  // the trigger silently absent is the worst shape this can fail in: the gauge
+  // fills forever, nothing ever pays out, and there is no error anywhere.
+  // Naming the offending key matters because there are now two of them.
+  assert.throws(
+    () => planTasks({ pollSchedule: 'not a cron string', triggerSchedule: '0 * * * *' }),
+    /POLL_SCHEDULE/
+  );
+  assert.throws(
+    () => planTasks({ pollSchedule: '* * * * *', triggerSchedule: 'hourly please' }),
+    /TRIGGER_SCHEDULE/
+  );
+});

@@ -39,7 +39,11 @@ function buildStatus({ scheduler: s, feeCheck, walletAddress: address, ethBalanc
     trigger: {
       mode: config.triggerMode,
       claimEveryUsd: config.claimEveryUsd,
-      schedule: config.pollSchedule,
+      // Both cadences. "Why has it not paid out?" is answered by the trigger
+      // schedule, not the poll — reporting only the poll made a bot working
+      // exactly as configured look like one ignoring a full tank every minute.
+      schedule: config.triggerSchedule,
+      pollSchedule: config.pollSchedule,
     },
     // All four shares, so they visibly add to 100. Reporting only reward and
     // dev made the split read as 65/0 — numbers that do not reach the claim and

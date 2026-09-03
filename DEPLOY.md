@@ -380,6 +380,11 @@ pm2 restart artificialneko-api artificialneko-bot --update-env
   read in a quiet cycle.
 - **`MIN_HOLD`.** 100,000 NEKO, matching what the site advertises. Lowering it
   toward 1 pays dust to nearly every wallet and multiplies per-cycle gas.
+- **A quiet twenty minutes is not a symptom.** Distributions land on
+  `TRIGGER_SCHEDULE` (default hourly, on the hour), not whenever the tank fills.
+  A gauge sitting at 100% between trigger ticks is the design, not a stall — the
+  scheduler logs `waiting for the next trigger window` when that is what is
+  happening. `GET /status` reports both schedules under `trigger`.
 
 ## Troubleshooting
 

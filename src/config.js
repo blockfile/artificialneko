@@ -258,7 +258,19 @@ const config = {
 
   // ── Bot: trigger ───────────────────────────────────────────────────────────
   triggerMode,
-  pollSchedule: process.env.POLL_SCHEDULE || '*/5 * * * *',
+  // Two schedules, deliberately. The poll writes the fee gauge the site renders,
+  // so it has to stay frequent; a distribution pays real money out, so it has to
+  // stay rare. One schedule cannot be both — tying them together buys either a
+  // gauge frozen for an hour at a time or a payout on every tick.
+  pollSchedule: process.env.POLL_SCHEDULE || '* * * * *',
+  // When a distribution may actually happen. An ordinary cron string, so the
+  // cadence is whatever you want: hourly is "0 * * * *", every half hour is
+  // "*/30 * * * *", every twenty minutes "*/20 * * * *".
+  //
+  // Prefer a divisor of 60. Cron's step operator restarts at the top of each
+  // hour, so "*/45" fires at :00 and :45 and then jumps straight back to :00 —
+  // a 45-minute gap followed by a 15-minute one, not every 45 minutes.
+  triggerSchedule: process.env.TRIGGER_SCHEDULE || '0 * * * *',
   // The gate is denominated in USD, not tokens: fees accrue in NVDA and one
   // NVDA is worth hundreds of dollars, so a token threshold is unusable.
   claimEveryUsd: num(process.env.CLAIM_EVERY_USD, 100),

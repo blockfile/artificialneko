@@ -18,7 +18,7 @@ const repo = require('../db/repository');
 const simvault = require('../evm/simvault');
 
 const state = {
-  task: null,
+  tasks: [],
   paused: false,
   isRunning: false,
   lastRunAt: null,
@@ -130,6 +130,10 @@ async function pollOnce(trigger, deps = {}) {
     const dryRun = deps.dryRun !== undefined ? deps.dryRun : config.dryRun;
     const cycleFn = deps.runCycle || runCycle;
     const readPrice = deps.getQuotePrice || getQuotePrice;
+    // May THIS tick pay, or is it only here to refresh the gauge? Defaults to
+    // true, so a manual run and every existing caller keep firing as before;
+    // only the frequent gauge task opts out.
+    const mayFire = deps.mayFire !== undefined ? deps.mayFire : true;
 
     // Simulate fees arriving so dry-run cycles have something to work with.
     // This is the ONLY place that accrues; the sweep deliberately does not.
@@ -174,10 +178,25 @@ async function pollOnce(trigger, deps = {}) {
       pendingSweepUsd: priced ? Math.max(0, (accrued - claimable) * priceUsd) : null,
       priceUsd,
       thresholdUsd: deps.claimEveryUsd !== undefined ? deps.claimEveryUsd : config.claimEveryUsd,
-      status: gate.fire ? 'distributing' : 'collecting',
+      // Only a tick that can actually pay may say so. The site holds its launch
+      // animation on "distributing", and announcing it on a gauge tick would
+      // promise a payout up to a whole trigger interval before one can happen.
+      status: gate.fire && mayFire ? 'distributing' : 'collecting',
     });
 
     if (!gate.fire) return { ran: false, claimable, usd: gate.usd, reason: gate.reason };
+
+    // The tank is full, but this is a gauge tick — the trigger schedule decides
+    // when it empties. Reported distinctly from "not enough yet", or a full tank
+    // sitting there unspent reads as a stuck bot.
+    if (!mayFire) {
+      return {
+        ran: false,
+        claimable,
+        usd: gate.usd,
+        reason: `${gate.reason} — waiting for the next trigger window`,
+      };
+    }
 
     console.log(`[scheduler] ${gate.reason} — running a cycle`);
     state.lastRunAt = new Date().toISOString();
@@ -190,17 +209,59 @@ async function pollOnce(trigger, deps = {}) {
   }
 }
 
+/**
+ * Pure: the cron tasks to register, given the two schedules.
+ *
+ * Normally two — a frequent gauge task that may never pay, and a rare trigger
+ * task that may. When the two schedules are IDENTICAL that becomes one task,
+ * because two tasks firing in the same second race for the `isRunning` flag and
+ * whichever loses is dropped: half the trigger ticks would silently vanish and
+ * the bot would look like it randomly skipped an hour. An operator who wants
+ * "just check hourly" sets both keys to the same string, so this is the likely
+ * mistake rather than a theoretical one.
+ *
+ * Throws on a cron string that is not one, naming the key at fault — there are
+ * two of them now, and "Invalid schedule" would leave an operator guessing.
+ * Refusing here means nothing is registered: a half-started bot, with the gauge
+ * ticking and the trigger silently absent, fills forever and never pays out.
+ *
+ * @param {{pollSchedule: string, triggerSchedule: string}} schedules
+ * @returns {{schedule: string, key: string, trigger: string, mayFire: boolean}[]}
+ */
+function planTasks({ pollSchedule, triggerSchedule }) {
+  const tasks =
+    pollSchedule === triggerSchedule
+      ? [{ schedule: pollSchedule, key: 'POLL_SCHEDULE', trigger: 'poll', mayFire: true }]
+      : [
+          { schedule: pollSchedule, key: 'POLL_SCHEDULE', trigger: 'gauge', mayFire: false },
+          { schedule: triggerSchedule, key: 'TRIGGER_SCHEDULE', trigger: 'trigger', mayFire: true },
+        ];
+  for (const t of tasks) {
+    if (!cron.validate(t.schedule)) throw new Error(`Invalid ${t.key}: ${t.schedule}`);
+  }
+  return tasks;
+}
+
 function start() {
-  if (state.task) return;
-  if (!cron.validate(config.pollSchedule)) throw new Error(`Invalid POLL_SCHEDULE: ${config.pollSchedule}`);
+  if (state.tasks.length) return;
+  // Planned (and validated) before ANY task is registered, so a typo in either
+  // key stops the bot here rather than leaving half of it running.
+  const plan = planTasks({ pollSchedule: config.pollSchedule, triggerSchedule: config.triggerSchedule });
   state.startedAt = new Date().toISOString();
-  state.task = cron.schedule(config.pollSchedule, () => {
-    pollOnce('poll').catch((err) => console.error('[scheduler] poll error:', err));
-  });
+  state.tasks = plan.map((t) =>
+    cron.schedule(t.schedule, () => {
+      pollOnce(t.trigger, { mayFire: t.mayFire }).catch((err) =>
+        console.error(`[scheduler] ${t.trigger} error:`, err)
+      );
+    })
+  );
   const gate =
     config.triggerMode === 'accumulation' ? ` threshold=$${config.claimEveryUsd}` : '';
+  const cadence = plan
+    .map((t) => `${t.trigger}="${t.schedule}"${t.mayFire ? '' : ' (gauge only)'}`)
+    .join(' ');
   console.log(
-    `[scheduler] started — mode="${config.triggerMode}" schedule="${config.pollSchedule}"${gate} (dryRun=${config.dryRun})`
+    `[scheduler] started — mode="${config.triggerMode}" ${cadence}${gate} (dryRun=${config.dryRun})`
   );
 }
 
@@ -273,7 +334,7 @@ function getState() {
 
 // Test helper — reset scheduler state to a clean slate.
 function _resetState() {
-  state.task = null;
+  state.tasks = [];
   state.paused = false;
   state.isRunning = false;
   state.lastRunAt = null;
@@ -288,5 +349,5 @@ function _resetState() {
 
 module.exports = {
   start, pause, resume, triggerNow, pollOnce, getState,
-  getClaimableQuote, shouldFire, finishedGauge, _resetState,
+  getClaimableQuote, shouldFire, planTasks, finishedGauge, _resetState,
 };

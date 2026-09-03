@@ -60,3 +60,12 @@ test('an unknown claimable reads as null rather than zero', () => {
   assert.strictEqual(out.claimableUsd, null);
   assert.strictEqual(out.nvdaPriceUsd, null);
 });
+
+test('status reports BOTH schedules — how often it looks and when it may pay', () => {
+  // "Why has it not paid out?" is answered by the trigger cadence, not the poll
+  // cadence. Reporting only the poll made a bot that was working normally look
+  // like one that had been checking every minute and ignoring a full tank.
+  const out = buildStatus({ scheduler: {}, feeCheck: null, walletAddress: '0xabc', ethBalance: 1 });
+  assert.strictEqual(out.trigger.pollSchedule, '* * * * *', 'how often it looks');
+  assert.strictEqual(out.trigger.schedule, '0 * * * *', 'when it may actually pay');
+});

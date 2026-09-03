@@ -1,14 +1,19 @@
 # Hourly distribution trigger
 
 **Date:** 2026-09-04
-**Status:** approved, not yet implemented
+**Status:** implemented
 
 ## What we want
 
-A distribution happens **at most once an hour**, and only when the claimable
-fees are worth at least `CLAIM_EVERY_USD` ($100) at that moment. If the hour
-arrives and the fees are short, nothing is claimed and the check rolls over to
-the next hour.
+A distribution happens **at most once per trigger interval** — hourly by
+default — and only when the claimable fees are worth at least `CLAIM_EVERY_USD`
+($100) at that moment. If the interval comes round and the fees are short,
+nothing is claimed and the check rolls over to the next one.
+
+**The interval is adjustable.** It is an ordinary cron string, so hourly is
+`0 * * * *`, every half hour is `*/30 * * * *`, every twenty minutes is
+`*/20 * * * *`. Prefer a divisor of 60: cron's step operator restarts at the top
+of each hour, so `*/45` fires at `:00` and `:45` and then jumps back to `:00`.
 
 Meanwhile the site's fee gauge keeps updating **every minute**, so a visitor
 watching the tank fill sees it climb continuously rather than jumping once an
@@ -70,7 +75,7 @@ marker checked inside `shouldFire`) because:
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `POLL_SCHEDULE` | `* * * * *` *(was `*/5 * * * *`)* | How often the chain is read and the gauge written. Never fires a cycle. |
-| `TRIGGER_SCHEDULE` | `0 * * * *` *(new)* | When a distribution may actually happen. |
+| `TRIGGER_SCHEDULE` | `0 * * * *` *(new)* | When a distribution may actually happen. Any cron string: `*/30 * * * *`, `*/20 * * * *`, … |
 
 `triggerSchedule` reads from `process.env.TRIGGER_SCHEDULE` with the same shape
 as `pollSchedule`.
@@ -93,16 +98,35 @@ A gauge tick that meets the threshold returns
 rather than reusing a "below threshold" reason, so the log distinguishes "not
 enough yet" from "enough, but not yet time".
 
-**`start()` schedules two tasks**, validating both cron strings before either is
-registered:
+**`planTasks({pollSchedule, triggerSchedule})` is a new pure function** that
+returns the tasks to register, and throws on a cron string that is not one —
+naming the key at fault, since there are two of them now. Validation lives here
+rather than in `start()` so it is testable without registering live cron timers,
+matching how `shouldFire` and `finishedGauge` are already factored.
+
+**`start()` plans, then registers**, so a typo in either key stops the bot
+before anything is running:
 
 ```js
-state.task        = cron.schedule(pollSchedule,    () => pollOnce('gauge', { mayFire: false }))
-state.triggerTask = cron.schedule(triggerSchedule, () => pollOnce('trigger'))
+const plan = planTasks({ pollSchedule: config.pollSchedule, triggerSchedule: config.triggerSchedule });
+state.tasks = plan.map((t) =>
+  cron.schedule(t.schedule, () => {
+    pollOnce(t.trigger, { mayFire: t.mayFire }).catch((err) =>
+      console.error(`[scheduler] ${t.trigger} error:`, err)
+    );
+  })
+);
 ```
 
-Both callbacks keep the existing `.catch(err => console.error(...))` — an
+Every callback keeps the existing `.catch(err => console.error(...))` — an
 unhandled rejection in a cron tick must not take the bot down.
+
+The startup line names both cadences, so the log says what was actually
+configured:
+
+```
+[scheduler] started — mode="accumulation" gauge="* * * * *" (gauge only) trigger="0 * * * *" threshold=$100 (dryRun=true)
+```
 
 **Guard: identical schedules collapse to one task** with firing enabled. An
 operator who wants "just check hourly" would naturally set both keys to
@@ -110,9 +134,16 @@ operator who wants "just check hourly" would naturally set both keys to
 flag and randomly swallow the trigger tick, which is a bug that would show up as
 "it sometimes skips an hour".
 
-`_resetState()` clears `triggerTask` alongside `task`.
+`state.task` becomes `state.tasks` (an array), and `_resetState()` clears it.
 
-### 3. Nothing else changes
+### 3. Operator status — `src/routes/operator.js`
+
+`GET /status` reports both cadences under `trigger`: `schedule` becomes the
+TRIGGER schedule and `pollSchedule` is added alongside it. "Why has it not paid
+out?" is answered by the trigger cadence, and reporting only the poll made a bot
+working exactly as configured look like one ignoring a full tank every minute.
+
+### 4. Nothing else changes
 
 - **`shouldFire` is untouched.** The threshold gate, the hold-when-price-is-
   unavailable rule, and the interval-mode path are all already correct. They
@@ -134,10 +165,17 @@ Extending the existing `pollOnce` deps-injection block:
    `collecting`, not `distributing`.
 3. `mayFire: false` above the threshold reports the waiting-for-window reason,
    not the below-threshold one.
-4. `mayFire` omitted fires exactly as it does today (guards the default).
+4. `planTasks` gives a non-firing gauge task and a firing trigger task.
+5. Identical schedules collapse to one firing task.
+6. A typo in either schedule is refused **by name**.
 
-And in `src/config.test.js`: `TRIGGER_SCHEDULE` defaults to `0 * * * *`, and
-`POLL_SCHEDULE` defaults to `* * * * *`.
+`mayFire` defaulting to true is already covered: every existing `pollOnce` test
+calls the deps helper without it and asserts today's firing behaviour.
+
+In `src/config.test.js`: the two schedule defaults, and that `TRIGGER_SCHEDULE`
+honours `*/30` and `*/20`.
+
+In `src/routes/operator.test.js`: `/status` reports both cadences.
 
 Existing tests must pass unmodified. If one needs editing, the default is wrong.
 

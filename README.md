@@ -62,6 +62,43 @@ sweep.
 `TRIGGER_MODE=interval` claims whatever has accrued on every tick, and needs no
 price at all.
 
+### How often it looks vs how often it pays
+
+Two schedules, because those are two different questions and they want opposite
+answers.
+
+| Env | Default | Job |
+| --- | --- | --- |
+| `POLL_SCHEDULE` | `* * * * *` | read the chain, price it, write the fee gauge. **Never pays.** |
+| `TRIGGER_SCHEDULE` | `0 * * * *` | when a distribution may actually happen. |
+
+A distribution needs **both**: the trigger schedule comes round *and* the
+claimable fees clear `CLAIM_EVERY_USD`. If the hour arrives and the tank is
+short, nothing is claimed and the check rolls over to the next one — the fees
+are not lost, they keep accruing on-chain until a check finds enough.
+
+The cadence is an ordinary cron string, so it is whatever you want it to be:
+
+```
+0 * * * *      hourly, on the hour              (default)
+*/30 * * * *   every 30 minutes, at :00 and :30
+*/20 * * * *   every 20 minutes
+*/5 * * * *    every 5 minutes — pays as soon as $100 lands
+```
+
+Prefer a divisor of 60. Cron's step operator restarts each hour, so `*/45` fires
+at `:00` and `:45` and then jumps back to `:00` — a 45-minute gap followed by a
+15-minute one, not "every 45 minutes".
+
+**Why not one schedule.** The poll also writes the gauge behind the site's
+progress bar (`GET /distribution`). Slowing it to hourly freezes the tank for an
+hour at a time; speeding the trigger up pays out on every tick. Separating them
+lets the site show a tank climbing every minute that empties on the hour.
+
+Setting both keys to the same string is fine — they collapse to a single firing
+task. Two tasks on the same minute would race for the run flag and silently drop
+half the trigger ticks.
+
 ## The two things that will silently break it
 
 **1. `creatorFeeRecipient` must be this bot's wallet.** It is the only address
@@ -240,6 +277,8 @@ Everything is documented in `.env.example`. The ones worth knowing first:
 | `TOKEN_ADDRESS` | — | blank until launch → every stat is null |
 | `QUOTE_TOKEN_ADDRESS` | NVDA | the quote asset **and** the reward asset — one address, both roles |
 | `CLAIM_EVERY_USD` | `100` | fire once the accrued NVDA is worth this |
+| `POLL_SCHEDULE` | `* * * * *` | how often the chain is read and the gauge written; never pays |
+| `TRIGGER_SCHEDULE` | `0 * * * *` | when a distribution may happen — `*/30 * * * *` for every half hour |
 | `REWARD_PCT` | `65` | share airdropped to holders |
 | `BURN_PCT` | `25` | share used to buy NEKO and burn it |
 | `GAS_PCT` | `10` | share sold for ETH to fund the bot's own gas |

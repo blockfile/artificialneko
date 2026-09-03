@@ -9,7 +9,10 @@ const assert = require('node:assert');
 // Without that, a case asserting a rejected value leaves that value in the
 // environment and every later case inherits it — which showed up as three
 // unrelated tests failing after a split-validation test was added.
-const OWNED = ['REWARD_PCT', 'BURN_PCT', 'GAS_PCT', 'TRIGGER_MODE', 'CLAIM_EVERY_USD', 'DEV_PAYOUT_ADDRESS'];
+const OWNED = [
+  'REWARD_PCT', 'BURN_PCT', 'GAS_PCT', 'TRIGGER_MODE', 'CLAIM_EVERY_USD', 'DEV_PAYOUT_ADDRESS',
+  'POLL_SCHEDULE', 'TRIGGER_SCHEDULE',
+];
 
 function loadConfig(env = {}) {
   for (const k of OWNED) delete process.env[k];
@@ -99,4 +102,19 @@ test('the wallet is not enumerable, so serialising config cannot trigger it', ()
   assert.ok(!Object.keys(config).includes('wallet'));
   assert.doesNotThrow(() => JSON.stringify(config));
   process.env.DRY_RUN = 'true';
+});
+
+test('the poll looks every minute while the trigger only fires hourly', () => {
+  // Two schedules, because the poll does two jobs: it writes the fee gauge the
+  // site reads, and it decides whether to pay. Tying them together means either
+  // a frozen gauge or an hourly payout, never both.
+  const config = loadConfig({ DRY_RUN: 'true' });
+  assert.strictEqual(config.pollSchedule, '* * * * *');
+  assert.strictEqual(config.triggerSchedule, '0 * * * *');
+});
+
+test('the trigger cadence is an ordinary cron string, so any interval works', () => {
+  // "Every 30 minutes" and "every 20 minutes" are the ones actually asked for.
+  assert.strictEqual(loadConfig({ TRIGGER_SCHEDULE: '*/30 * * * *', DRY_RUN: 'true' }).triggerSchedule, '*/30 * * * *');
+  assert.strictEqual(loadConfig({ TRIGGER_SCHEDULE: '*/20 * * * *', DRY_RUN: 'true' }).triggerSchedule, '*/20 * * * *');
 });
