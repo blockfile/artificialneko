@@ -135,7 +135,7 @@ test('with no DEV_PAYOUT_ADDRESS the dev cut is skipped, not failed', async () =
 
 test('a dev remainder is forwarded, and stays out of the public feed', async () => {
   // A dev cut only exists when the three configured legs fall under 100, so
-  // this case needs a split that leaves one — at the default 65/25/10 there is
+  // this case needs a split that leaves one — at the default 90/0/10 there is
   // nothing to forward, which the preceding test covers.
   process.env.REWARD_PCT = '60';
   process.env.BURN_PCT = '20';

@@ -21,10 +21,13 @@ function loadConfig(env = {}) {
   return require('./config');
 }
 
-test('the default 65/25/10 split leaves no dev cut at all', () => {
+test('the default 90/0/10 split leaves no dev cut at all', () => {
+  // This deployment pays holders as much as possible and does not buy back.
+  // BURN_PCT is 0 BY CHOICE, not by oversight: the buyback machinery is intact
+  // and funding it is a one-value change, but nothing burns until it is funded.
   const config = loadConfig({ DRY_RUN: 'true' });
-  assert.strictEqual(config.rewardPct, 65);
-  assert.strictEqual(config.burnPct, 25);
+  assert.strictEqual(config.rewardPct, 90);
+  assert.strictEqual(config.burnPct, 0);
   assert.strictEqual(config.gasPct, 10);
   assert.strictEqual(config.devPct, 0);
 });

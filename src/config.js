@@ -70,12 +70,19 @@ if (devPayoutAddress && !isAddress(devPayoutAddress)) {
   throw new Error(`DEV_PAYOUT_ADDRESS is not a valid address: ${process.env.DEV_PAYOUT_ADDRESS}`);
 }
 
-// The claim splits three ways. REWARD_PCT and BURN_PCT are configured; the dev
-// cut is whatever is left, so it only exists when the other two total under 100.
-// At the default 80/20 there is no dev cut at all — every NVDA collected goes
-// back to holders or into the buyback.
-const rewardPct = num(process.env.REWARD_PCT, 65);
-const burnPct = num(process.env.BURN_PCT, 25);
+// The claim splits four ways. REWARD_PCT, BURN_PCT and GAS_PCT are configured;
+// the dev cut is whatever is left, so it only exists when the other three total
+// under 100. At the default 90/0/10 it is zero — every NVDA collected either
+// reaches holders or pays for the gas that delivers it.
+//
+// BURN_PCT defaults to 0 BY CHOICE for this deployment: it pays holders as much
+// as possible rather than spending a quarter of every claim on a buyback. The
+// buyback-and-burn machinery in evm/buyback.js is intact and tested — it is
+// simply not funded, and the cycle logs "burn share of this claim is zero" and
+// moves on. Setting BURN_PCT (and lowering REWARD_PCT to match) is all it takes
+// to switch it on; nothing else has to change.
+const rewardPct = num(process.env.REWARD_PCT, 90);
+const burnPct = num(process.env.BURN_PCT, 0);
 const gasPct = num(process.env.GAS_PCT, 10);
 if (!(rewardPct >= 0 && rewardPct <= 100)) {
   throw new Error(`invalid split: REWARD_PCT(${rewardPct}) must be within [0, 100]`);

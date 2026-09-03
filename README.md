@@ -5,17 +5,17 @@
 NEKO launches on the Pons V2 launchpad **paired with NVDA** (tokenized
 SpaceX stock). Because pons pays creator fees in whatever a launch is priced in,
 those fees accrue **as NVDA** — never as ETH. This repo claims them, airdrops
-most of them pro-rata to NEKO holders, spends the rest buying NEKO and
-burning it, and reports what it did to the site.
+nearly all of them pro-rata to NEKO holders, keeps back only what it costs to
+send them, and reports what it did to the site.
 
 ```
 NEKO trades  →  creator fees accrue on-chain, denominated in NVDA
       ↓  sweep              push pending fees into the pons fee escrow
       ↓  claimToken(NVDA)   withdraw the escrow → the bot's wallet
       ├─ 10% → sell for native ETH, so the bot can pay its own gas
-      ├─ 65% → airdrop NVDA pro-rata to NEKO holders
-      ├─ 25% → buy NEKO with it, then BURN what was bought
-      └─  0% → dev cut: whatever the other three leave (none at 65/25/10)
+      ├─ 90% → airdrop NVDA pro-rata to NEKO holders
+      ├─  0% → buyback + burn: BUILT, but not funded (BURN_PCT=0)
+      └─  0% → dev cut: whatever the other three leave (none at 90/0/10)
 ```
 
 The gas leg runs **first**. The airdrop that follows sends one transaction per
@@ -26,9 +26,16 @@ through paying people.
 is exactly what holders are paid — so slippage, quoting and venue dispatch exist
 only for the buyback, and a bad swap can never strand a holder payout.
 
-**The burn is a real burn.** `burn(uint256)` on the token, which reduces
-`totalSupply` — not a transfer to a dead address. Holders can watch the supply
-shrink on the explorer, and burned tokens leave the holder set entirely.
+**The buyback is off by choice, not missing.** `BURN_PCT=0`, so every NVDA
+claimed goes to holders or to the gas that delivers it, and no cycle spends a
+quarter of the claim buying its own token back. The machinery is intact and
+tested — `evm/buyback.js`, a real `burn(uint256)` that reduces `totalSupply`
+rather than a transfer to a dead address — it is simply not funded. Each cycle
+records `burn share of this claim is zero` and moves on.
+
+Funding it is one value: set `BURN_PCT` and lower `REWARD_PCT` to match. Until
+then `totalBurned`, `burnedPctOfSupply` and `GET /burns` all report zero, and a
+site rendering burn tiles should hide them rather than show a permanent 0.
 
 ## Two processes, one database
 
@@ -279,8 +286,8 @@ Everything is documented in `.env.example`. The ones worth knowing first:
 | `CLAIM_EVERY_USD` | `100` | fire once the accrued NVDA is worth this |
 | `POLL_SCHEDULE` | `* * * * *` | how often the chain is read and the gauge written; never pays |
 | `TRIGGER_SCHEDULE` | `0 * * * *` | when a distribution may happen — `*/30 * * * *` for every half hour |
-| `REWARD_PCT` | `65` | share airdropped to holders |
-| `BURN_PCT` | `25` | share used to buy NEKO and burn it |
+| `REWARD_PCT` | `90` | share airdropped to holders |
+| `BURN_PCT` | `0` | share used to buy NEKO and burn it — **off by default here** |
 | `GAS_PCT` | `10` | share sold for ETH to fund the bot's own gas |
 | `GAS_CEILING_ETH` | `0` | stop converting above this ETH balance (0 = never) |
 | `SLIPPAGE_PCT` | `5` | tolerance on the buyback swap only |

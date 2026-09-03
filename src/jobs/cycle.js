@@ -6,10 +6,12 @@
 //   claimToken(NVDA)                     -> NVDA in the wallet
 //     -> GAS_PCT:    sell for native ETH, so the bot can pay its own gas
 //     -> REWARD_PCT: airdrop pro-rata to NEKO holders
-//     -> BURN_PCT:   buy NEKO with it and burn what was bought
+//     -> BURN_PCT:   buy NEKO with it and burn what was bought. ZERO by
+//                    default here — the leg is built and tested but this
+//                    deployment does not fund it, so it skips every cycle.
 //     -> remainder:  the dev cut — forwarded to DEV_PAYOUT_ADDRESS if one is
 //                    set, otherwise left in the wallet. At the default
-//                    65/25/10 it is zero.
+//                    90/0/10 it is zero.
 //
 // The gas leg runs FIRST because the airdrop that follows sends one
 // transaction per holder: topping up before spending is what stops a cycle

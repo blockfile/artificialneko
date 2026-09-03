@@ -157,8 +157,8 @@ V4_BUYER_ADDRESS=0x5FCe84D38DD7707AC58bf8277859b384aa2158E8
 #     node scripts/deploy-disperser-v2.js --confirm
 DISPERSE_ADDRESS=
 
-REWARD_PCT=65
-BURN_PCT=25
+REWARD_PCT=90
+BURN_PCT=0        # buyback+burn is BUILT but deliberately not funded
 GAS_PCT=10
 MIN_HOLD=100000
 
