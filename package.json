@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Rewards bot and stats API for Artificial Neko — claims NEKO's NVDA creator fees, airdrops them to holders, and serves market cap, holders, total NVDA rewarded and the payout feed.",
-  "homepage": "https://artificialneko.art",
+  "homepage": "https://artificialneko.com",
   "type": "commonjs",
   "main": "server.js",
   "scripts": {

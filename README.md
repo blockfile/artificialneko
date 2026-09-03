@@ -1,6 +1,6 @@
 # artificialneko
 
-**Creator-fee reward bot and stats API for [artificialneko.art](https://artificialneko.art).**
+**Creator-fee reward bot and stats API for [artificialneko.com](https://artificialneko.com).**
 
 NEKO launches on the Pons V2 launchpad **paired with NVDA** (tokenized
 SpaceX stock). Because pons pays creator fees in whatever a launch is priced in,
@@ -36,7 +36,7 @@ The public API must never hold a signing key, so the bot is a separate process:
 
 | Process | Runs | Holds the wallet key | Exposed |
 | --- | --- | --- | --- |
-| `server.js` (`npm start`) | the site's API | **no** | nginx → `api.artificialneko.art` |
+| `server.js` (`npm start`) | the site's API | **no** | nginx → `api.artificialneko.com` |
 | `bot.js` (`npm run bot`) | scheduler + cycle | **yes** | `127.0.0.1` only |
 
 They share one MongoDB: the bot writes payouts, the API reads them. A compromise
@@ -352,7 +352,7 @@ a tokenized equity.
 ## Deploying
 
 See [`DEPLOY.md`](DEPLOY.md) — Ubuntu 24.04, Node 22, MongoDB, two PM2
-processes, nginx and Certbot for `api.artificialneko.art`.
+processes, nginx and Certbot for `api.artificialneko.com`.
 
 ## Design
 

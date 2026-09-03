@@ -109,7 +109,7 @@ which is what you want.
 ```bash
 mkdir -p /var/www/artificialneko
 cd /var/www/artificialneko
-git clone https://github.com/blockfile/babyAI.git .
+git clone https://github.com/blockfile/artificialneko.git .
 npm ci --omit=dev
 ```
 
@@ -164,7 +164,12 @@ MIN_HOLD=100000
 
 TRIGGER_MODE=accumulation
 CLAIM_EVERY_USD=100
+# How often the chain is read and the site's fee gauge written. Never pays.
 POLL_SCHEDULE=* * * * *
+# When a distribution may actually happen. Any cron string: */30 for every half
+# hour, */20 for every twenty minutes. A payout needs BOTH this schedule coming
+# round AND the fees clearing CLAIM_EVERY_USD.
+TRIGGER_SCHEDULE=0 * * * *
 
 MONGODB_URI=                   # from step 4
 MONGODB_DB=artificialneko
