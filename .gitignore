@@ -1,0 +1,7 @@
+node_modules/
+.env
+data/
+*.log
+
+# solc is installed on demand for the one-off disperser deployment
+node_modules/solc/
