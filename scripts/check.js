@@ -28,6 +28,14 @@ const { sweepableQuote, sweepBlockedByOperator } = require('../src/evm/sweep');
 const { isFeeRecipientOk } = require('../src/jobs/cycle');
 const { provider, walletAddress } = require('../src/evm/provider');
 const { erc20 } = require('../src/evm/erc20');
+const { secondsUntilNext } = require('../src/services/nextrun');
+
+/** "MM:SS" until the next trigger firing, or null when the schedule is unreadable. */
+function nextCheckIn() {
+  const s = secondsUntilNext(config.triggerSchedule);
+  if (s === null) return null;
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
 
 const show = (v) => (v === null || v === undefined ? '—' : v);
 const hr = (title) => console.log(`\n── ${title} ${'─'.repeat(Math.max(0, 64 - title.length))}`);
@@ -205,7 +213,13 @@ async function main() {
         ? '   ⚠️ very low — nearly every holder qualifies, so expect a large recipient list and the gas that comes with it'
         : '')
   );
-  console.log(`  trigger    : ${config.triggerMode}${config.triggerMode === 'accumulation' ? ` at $${config.claimEveryUsd}` : ''} on "${config.pollSchedule}"`);
+  // BOTH schedules. Printing only the poll said the trigger fired every minute
+  // when it fires hourly — the one number an operator reads this line for.
+  console.log(
+    `  trigger    : ${config.triggerMode}${config.triggerMode === 'accumulation' ? ` at $${config.claimEveryUsd}` : ''} on "${config.triggerSchedule}"` +
+      `${nextCheckIn() === null ? '' : ` (next in ${nextCheckIn()})`}`
+  );
+  console.log(`  gauge poll : "${config.pollSchedule}" — reads the chain and writes the fee gauge, never pays`);
   console.log(`  dryRun     : ${config.dryRun}`);
   console.log(`  cors       : ${config.corsOrigins.join(', ')}`);
   console.log(`  ports      : api ${config.port}, bot ${config.botPort} (localhost only)`);
