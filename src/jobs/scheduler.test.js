@@ -346,3 +346,24 @@ test('a typo in either schedule is refused by name, before anything is registere
     /TRIGGER_SCHEDULE/
   );
 });
+
+test('a manual run ignores the trigger schedule AND the threshold', async () => {
+  // POST /run is how an operator rehearses and how they force a payout. It
+  // deliberately does not go through pollOnce, so neither the trigger schedule
+  // nor CLAIM_EVERY_USD applies — an empty-ish tank still runs a full cycle.
+  // Guarding it because the firing gate added for the hourly trigger would be
+  // an easy thing to accidentally extend over this path.
+  const s = require('./scheduler');
+  s._resetState();
+
+  // There is no database in this test, so a cycle that actually STARTS dies at
+  // repo.createCycle. That is the assertion: reaching Mongo proves nothing
+  // intercepted the call. Any gate — the schedule, the threshold, mayFire —
+  // would have resolved with a reason instead of throwing.
+  await assert.rejects(
+    s.triggerNow(),
+    /MongoDB not connected/,
+    'a manual run must reach runCycle regardless of schedule or threshold'
+  );
+  s._resetState();
+});

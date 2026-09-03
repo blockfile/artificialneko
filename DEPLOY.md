@@ -140,9 +140,11 @@ DRY_RUN=true
 QUOTE_TOKEN_ADDRESS=0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC
 QUOTE_SYMBOL=NVDA
 
-# The REWARD asset: what holders are paid. Bought with NVDA every cycle.
-REWARD_TOKEN_ADDRESS=0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18
-REWARD_SYMBOL=AI
+# The REWARD asset: what holders are paid. The SAME token the fees arrive in,
+# so the cycle's buy step is a no-op — there is nothing to swap. Point this at a
+# different token and the buy leg switches on by itself.
+REWARD_TOKEN_ADDRESS=0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC
+REWARD_SYMBOL=NVDA
 
 # The swap router is shared and safe to share: it never touches holders, and
 # its output goes straight from the PoolManager to the wallet, so it does not
@@ -318,10 +320,17 @@ pm2 restart artificialneko-bot --update-env
 curl -H "x-api-key: $API_KEY" -X POST http://127.0.0.1:3100/run
 ```
 
-A rehearsed cycle claims NVDA, sells a slice for gas, **buys AI**, airdrops it,
-then buys and burns NEKO. The `reward-swap` step is the one this project adds
-and the lineage it came from does not have — holders are paid a token the bot
-must buy first.
+A rehearsed cycle claims NVDA, sells a slice for gas, airdrops NVDA to holders,
+then buys NEKO with the burn share and destroys it. The `reward-swap` step is
+recorded but does nothing while the reward token IS the quote token: there is
+nothing to swap, so it reports the claim straight through with no signature.
+A `reward-swap` with a transaction hash means `REWARD_TOKEN_ADDRESS` points at
+something other than NVDA and the buy leg has switched itself on.
+
+`POST /run` ignores both the trigger schedule and `CLAIM_EVERY_USD` — it runs a
+full cycle against whatever is in the escrow, however little that is. That is
+what makes it useful for a rehearsal, and what makes it a live payout button
+once `DRY_RUN=false`.
 
 Put the blank back when you are done:
 
