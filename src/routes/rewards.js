@@ -22,6 +22,7 @@
 const express = require('express');
 const config = require('../config');
 const { getGauge } = require('../services/feegauge');
+const { secondsUntilNext } = require('../services/nextrun');
 
 /**
  * The fee meter, in the shape the site's normaliser expects.
@@ -121,4 +122,53 @@ router.get('/rewards', async (req, res) => {
   }
 });
 
-module.exports = { router, parseQuery, presentPage, DEFAULT_LIMIT, MAX_LIMIT };
+/**
+ * Pure: the fee meter in the shape the site's RewardMeter documents.
+ *
+ * Kept separate from buildMeter above rather than merged: that one feeds the
+ * `meter` object inside GET /rewards and other frontends in this lineage read
+ * it, so its snake_case keys and three-state vocabulary are a settled contract.
+ * This one is the site's four-state contract, countdown included.
+ *
+ * `idle` and `charging` are not the same claim. An empty pot has nothing
+ * happening; a partly full one is visibly filling, and the site animates them
+ * differently.
+ *
+ * @param {object} gauge the stored distribution state
+ * @param {number|null} secondsUntilCheck null when the schedule is unreadable
+ */
+function buildMeterPayload(gauge, secondsUntilCheck) {
+  const g = gauge || {};
+  const accumulatedUsd = Number(g.collectedUsd || 0);
+  const thresholdUsd = Number(g.thresholdUsd) > 0 ? Number(g.thresholdUsd) : config.claimEveryUsd;
+
+  // Order matters. A cycle mid-payout says so even on an empty pot, because it
+  // has just emptied it. Only then does the amount decide.
+  const state =
+    g.status === 'distributing'
+      ? 'distributing'
+      : accumulatedUsd >= thresholdUsd
+        ? 'ready'
+        : accumulatedUsd <= 0.01
+          ? 'idle'
+          : 'charging';
+
+  return { accumulatedUsd, thresholdUsd, secondsUntilCheck, state };
+}
+
+// The site polls this every 30s and re-fetches the moment its countdown hits
+// zero — that is when the backend either distributes or rolls the window over.
+router.get('/rewards/meter', async (req, res) => {
+  try {
+    const gauge = await getGauge();
+    res.json(buildMeterPayload(gauge, secondsUntilNext(config.triggerSchedule)));
+  } catch (err) {
+    // The meter has no honest empty state — its normaliser throws without a
+    // pot — so a 502 gives the panel its retry button rather than a zeroed
+    // gauge that looks like a stalled bot.
+    console.warn('[artificialneko] fee meter unavailable:', err.message);
+    res.status(502).json({ error: 'fee meter unavailable' });
+  }
+});
+
+module.exports = { router, parseQuery, presentPage, buildMeterPayload, DEFAULT_LIMIT, MAX_LIMIT };

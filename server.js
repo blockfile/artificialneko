@@ -51,6 +51,7 @@ app.get('/', (req, res) => {
       'GET /token',
       'GET /stats',
       'GET /rewards?cursor&limit',
+      'GET /rewards/meter',
       'GET /burns?cursor&limit',
       'GET /distribution',
       'GET /health',

@@ -98,3 +98,44 @@ test('the payout list is served under `items` too', () => {
   assert.strictEqual(page.items[0].wallet, '0xabc');
   assert.strictEqual(typeof page.items[0].timestamp, 'string', 'ISO-8601, not epoch ms');
 });
+
+// ── GET /rewards/meter ─────────────────────────────────────────────────────
+// The site's RewardMeter calls this path and reads exactly four fields. It was
+// pointing at an endpoint that did not exist, so the panel showed "Uplink
+// refused the request (404)" against a perfectly healthy API.
+
+const { buildMeterPayload } = require('./rewards');
+
+test('the meter reports the pot, the threshold and the countdown', () => {
+  const out = buildMeterPayload(
+    { collectedUsd: 68.4, thresholdUsd: 100, status: 'collecting' },
+    2472
+  );
+  assert.strictEqual(out.accumulatedUsd, 68.4);
+  assert.strictEqual(out.thresholdUsd, 100);
+  assert.strictEqual(out.secondsUntilCheck, 2472);
+  assert.strictEqual(out.state, 'charging');
+});
+
+test('a full tank waiting for its window reads READY, not distributing', () => {
+  // This is the state the hourly trigger created and the old code never had:
+  // over the threshold, nothing paid yet. Saying "distributing" here would
+  // announce a payout up to an hour before one can happen.
+  const out = buildMeterPayload({ collectedUsd: 102.4, thresholdUsd: 100, status: 'collecting' }, 900);
+  assert.strictEqual(out.state, 'ready');
+});
+
+test('a cycle actually paying out reads DISTRIBUTING even on an empty pot', () => {
+  const out = buildMeterPayload({ collectedUsd: 0, thresholdUsd: 100, status: 'distributing' }, 3600);
+  assert.strictEqual(out.state, 'distributing');
+});
+
+test('an empty pot reads IDLE rather than charging from nothing', () => {
+  assert.strictEqual(buildMeterPayload({ collectedUsd: 0, thresholdUsd: 100, status: 'collecting' }, 60).state, 'idle');
+});
+
+test('an unreadable schedule gives no countdown rather than a wrong one', () => {
+  const out = buildMeterPayload({ collectedUsd: 50, thresholdUsd: 100, status: 'collecting' }, null);
+  assert.strictEqual(out.secondsUntilCheck, null);
+  assert.strictEqual(out.accumulatedUsd, 50, 'the meter still renders without a clock');
+});

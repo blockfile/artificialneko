@@ -217,3 +217,20 @@ test('burned share needs the supply — without it, null rather than a wrong num
   });
   assert.strictEqual(out.burnedPctOfSupply, null);
 });
+
+test('the reward total is served as TOKENS and its USD value separately', () => {
+  // The site labels this card "TOTAL $NVDA DISTRIBUTED" and resolves it from
+  // rewardDistributed first. Serving only `totalDistributed` — a USD figure —
+  // put dollars under an NVDA label, overstating the token count by NVDA's
+  // price, which is hundreds of dollars.
+  const out = buildStats({
+    market: {},
+    token: {},
+    rewards: { totalRewarded: 12.5 },
+    rewardPrice: { priceUsd: 180 },
+    symbol: 'NEKO',
+    tokenAddress: '0xtoken',
+  });
+  assert.strictEqual(out.rewardDistributed, 12.5, 'the NVDA amount, for the $NVDA label');
+  assert.strictEqual(out.rewardUsd, 2250, 'and its USD value, for the subtitle');
+});

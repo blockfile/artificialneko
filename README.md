@@ -192,10 +192,19 @@ zero as a real number.
 | `GET /token` | name, ticker, contract address, chain |
 | `GET /stats` | `marketCap`, `holders`, `totalRewarded`, `totalRewardedUsd`, `totalBurned`, `totalBurnedUsd`, `burnedPctOfSupply`, `priceUsd`, `liquidityUsd` |
 | `GET /rewards?cursor&limit` | the payout ledger, served as `transactions`, `items` and `rows` |
+| `GET /rewards/meter` | the same gauge in the site's own shape — `{ accumulatedUsd, thresholdUsd, secondsUntilCheck, state }` |
 | `GET /distribution` | the fee gauge — `{ collectedUsd, thresholdUsd, status, lastDistributionId }` |
 | `GET /health` | `{ ok, uptimeSec }` |
 
 ### The fee gauge
+
+`GET /rewards/meter` and `GET /distribution` serve the same gauge in two
+shapes. The meter is what the site's `RewardMeter` reads: `state` is
+`charging` / `ready` / `distributing` / `idle`, and `secondsUntilCheck` counts
+down to the next `TRIGGER_SCHEDULE` firing — the backend is the only side that
+knows the schedule, so it is the only side that can answer. `ready` is the
+state the hourly trigger made possible and the old code never had: over the
+threshold, nothing paid yet, waiting for the window.
 
 `GET /distribution` is what drives the site's "how full is the tank" meter and
 its launch animation:

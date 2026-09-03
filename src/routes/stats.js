@@ -133,6 +133,13 @@ function buildStats({ market, token: explorerToken, rewards = {}, burns = {}, cu
     // (`raw.<asset>Rewarded ?? raw.<asset>_rewarded ?? raw.rewarded`).
     nvdaRewarded: totalRewardedUsd,
     rewarded: totalRewardedUsd,
+    // The Artificial Neko site labels its card "TOTAL $NVDA DISTRIBUTED" and
+    // resolves it from `rewardDistributed` FIRST, falling back to
+    // `totalDistributed` — which is USD. Without this pair it put dollars under
+    // an NVDA label, overstating the token count by NVDA's price. Tokens here,
+    // dollars in rewardUsd, which is what its subtitle reads.
+    rewardDistributed: totalRewarded,
+    rewardUsd: totalRewardedUsd,
     // The space-inu site reads `totalDistributed` and renders it through
     // compactCurrency with a "$" prefix, so it wants the USD figure — not the
     // NVDA token amount that `totalRewarded` carries.
