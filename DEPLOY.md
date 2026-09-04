@@ -353,8 +353,24 @@ pm2 restart artificialneko-bot --update-env
 
 ## 12. Going live (after launch)
 
+First, check the chain WITHOUT putting the key on the box. This reads only —
+no wallet is constructed, nothing is signed — so you can confirm the launch pays
+the address you think it does before the key for that address is in a file on a
+server:
+
 ```bash
 cd /var/www/artificialneko
+node scripts/claimable.js 0xYOUR_TOKEN
+```
+
+It prints the launch's `creatorFeeRecipient`, what is claimable in the escrow
+right now, what is still pending on the curve, and whether that total clears
+`CLAIM_EVERY_USD`. If `feeRecip.` is not your wallet, stop here — no amount of
+configuration downstream fixes it.
+
+Then the full preflight, which does need the key:
+
+```bash
 nano .env      # set TOKEN_ADDRESS and WALLET_PRIVATE_KEY
 npm run check  # the feeRecip. line MUST show ✓
 ```

@@ -260,6 +260,11 @@ to a transaction that does not exist.
 | Route | Does |
 | --- | --- |
 | `GET /status` | `feeRecipientOk`, claimable NVDA and its USD value, wallet gas, scheduler state |
+
+`node scripts/claimable.js 0xTOKEN` answers the same question from the chain
+with **no key at all** — it never constructs a wallet. Use it to confirm the
+launch's `creatorFeeRecipient` before putting that wallet's key on a server,
+which is the order that keeps a wrong address from costing you anything.
 | `POST /run` | run one cycle now (409 if one is already running) |
 | `POST /pause` / `POST /resume` | stop and restart the schedule |
 
