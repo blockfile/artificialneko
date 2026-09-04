@@ -367,3 +367,84 @@ test('a manual run ignores the trigger schedule AND the threshold', async () => 
   );
   s._resetState();
 });
+
+// ── the trigger tick has to leave a trace ─────────────────────────────────
+// A tick that declines used to log nothing and record nothing, so "it checked
+// and correctly held" was indistinguishable from "it never ran". That is the
+// one question an operator asks when a full tank has not paid out.
+
+test('a trigger tick that holds still records WHEN it checked and WHY it held', async () => {
+  const s = require('./scheduler');
+  s._resetState();
+  await s.pollOnce('trigger', deps({
+    escrowBalanceQuote: async () => 0.1, // $15 at the test price — under the gate
+    runCycle: async () => { throw new Error('must not fire below the threshold'); },
+  }));
+
+  const { lastTrigger } = s.getState();
+  assert.ok(lastTrigger, 'the tick must be recorded even though nothing happened');
+  assert.strictEqual(lastTrigger.fired, false);
+  assert.match(lastTrigger.reason, /below/);
+  assert.ok(Date.parse(lastTrigger.at) > 0, 'and stamped with when it looked');
+});
+
+test('a gauge tick is NOT recorded as a trigger check', async () => {
+  // The gauge runs every minute and can never pay. Counting it as a check
+  // would make lastTrigger always read "a few seconds ago" and answer nothing.
+  const s = require('./scheduler');
+  s._resetState();
+  await s.pollOnce('gauge', deps({ mayFire: false, escrowBalanceQuote: async () => 10 }));
+  assert.strictEqual(s.getState().lastTrigger, null, 'only a tick that could pay counts');
+});
+
+test('a gauge tick must NOT block the trigger tick it collides with', async () => {
+  // "* * * * *" and "0 * * * *" fire in the SAME SECOND at the top of every
+  // hour — by construction, not by coincidence. While the gauge tick held the
+  // cycle lock, the trigger tick behind it was dropped with "a cycle is already
+  // running", every hour, forever. Seen in production: the hourly trigger never
+  // fired once, and the log line was the only evidence.
+  //
+  // The lock exists to stop two CYCLES contending for the wallet nonce. A gauge
+  // tick has no cycle, so it has no business holding it.
+  const s = require('./scheduler');
+  s._resetState();
+
+  let ran = 0;
+  let release;
+  const held = new Promise((r) => { release = r; });
+
+  const gauge = s.pollOnce('gauge', deps({
+    mayFire: false,
+    escrowBalanceQuote: async () => { await held; return 10; },
+  }));
+  const trigger = await s.pollOnce('trigger', deps({
+    runCycle: async () => { ran += 1; return { id: 1, status: 'complete' }; },
+  }));
+
+  release();
+  await gauge;
+
+  assert.strictEqual(ran, 1, 'the trigger must fire even with a gauge tick in flight');
+  assert.strictEqual(trigger.ran, true);
+});
+
+test('two ticks that can BOTH pay still cannot run at once', async () => {
+  // The nonce protection this replaces must survive: a manual POST /run landing
+  // during a scheduled cycle is still refused.
+  const s = require('./scheduler');
+  s._resetState();
+
+  let started = 0;
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const d = deps({ runCycle: async () => { started += 1; await held; return { id: 1, status: 'complete' }; } });
+
+  const first = s.pollOnce('trigger', d);
+  const second = await s.pollOnce('manual', d);
+  assert.strictEqual(second.ran, false);
+  assert.match(second.reason, /already running/);
+
+  release();
+  await first;
+  assert.strictEqual(started, 1, 'only one cycle may hold the wallet nonce');
+});

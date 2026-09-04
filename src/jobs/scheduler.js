@@ -27,6 +27,11 @@ const state = {
   lastPriceUsd: null,
   lastClaimableUsd: null,
   lastAccrued: null,
+  // The last tick that COULD have paid, and what it decided. A trigger tick
+  // that holds is otherwise silent, which makes "it checked and correctly held"
+  // indistinguishable from "it never ran" — the one question asked when a full
+  // tank has not paid out.
+  lastTrigger: null,
   startedAt: null,
   lastPhase: null,
 };
@@ -116,24 +121,34 @@ async function recordGauge(patch) {
 }
 
 async function pollOnce(trigger, deps = {}) {
+  // May THIS tick pay, or is it only here to refresh the gauge? Resolved BEFORE
+  // the lock, because the lock is only for ticks that can pay. Defaults to true,
+  // so a manual run and every existing caller keep firing as before; only the
+  // frequent gauge task opts out.
+  const mayFire = deps.mayFire !== undefined ? deps.mayFire : true;
+
   if (state.paused) return { ran: false, reason: 'paused' };
-  if (state.isRunning) {
+
+  // The run flag exists to stop two CYCLES contending for the wallet nonce, and
+  // is held across the balance read so a manual POST /run landing mid-read
+  // cannot spawn a second one.
+  //
+  // A gauge tick has no cycle, so it neither takes the flag nor waits on it —
+  // and it MUST NOT, because POLL_SCHEDULE and TRIGGER_SCHEDULE fire in the same
+  // second at the top of every hour, by construction rather than by accident.
+  // While the gauge tick took the flag there, the trigger tick behind it was
+  // dropped with "a cycle is already running" — every hour, so the hourly
+  // trigger never fired once. The log line was the only evidence it existed.
+  if (mayFire && state.isRunning) {
     console.log(`[scheduler] ${trigger} tick ignored — a cycle is already running`);
     return { ran: false, reason: 'cycle already running' };
   }
 
-  // Hold the run flag across the balance read too, so a manual POST /run
-  // landing between the read and the cycle cannot spawn a second concurrent
-  // cycle and contend for the wallet nonce.
-  state.isRunning = true;
+  if (mayFire) state.isRunning = true;
   try {
     const dryRun = deps.dryRun !== undefined ? deps.dryRun : config.dryRun;
     const cycleFn = deps.runCycle || runCycle;
     const readPrice = deps.getQuotePrice || getQuotePrice;
-    // May THIS tick pay, or is it only here to refresh the gauge? Defaults to
-    // true, so a manual run and every existing caller keep firing as before;
-    // only the frequent gauge task opts out.
-    const mayFire = deps.mayFire !== undefined ? deps.mayFire : true;
 
     // Simulate fees arriving so dry-run cycles have something to work with.
     // This is the ONLY place that accrues; the sweep deliberately does not.
@@ -184,6 +199,13 @@ async function pollOnce(trigger, deps = {}) {
       status: gate.fire && mayFire ? 'distributing' : 'collecting',
     });
 
+    if (mayFire) {
+      state.lastTrigger = { at: new Date().toISOString(), fired: gate.fire, reason: gate.reason, usd: gate.usd };
+      // Logged even when nothing happens. A trigger tick is hourly, so this is
+      // one line an hour, and it is the line that answers "did it look?".
+      if (!gate.fire) console.log(`[scheduler] trigger tick held — ${gate.reason}`);
+    }
+
     if (!gate.fire) return { ran: false, claimable, usd: gate.usd, reason: gate.reason };
 
     // The tank is full, but this is a gauge tick — the trigger schedule decides
@@ -205,7 +227,7 @@ async function pollOnce(trigger, deps = {}) {
     await recordGauge(finishedGauge(cycle));
     return { ran: true, claimable, usd: gate.usd, cycle };
   } finally {
-    state.isRunning = false;
+    if (mayFire) state.isRunning = false;
   }
 }
 
@@ -327,6 +349,7 @@ function getState() {
     lastPriceUsd: state.lastPriceUsd,
     lastClaimableUsd: state.lastClaimableUsd,
     lastAccrued: state.lastAccrued,
+    lastTrigger: state.lastTrigger,
     phase: state.lastPhase,
     startedAt: state.startedAt,
   };
@@ -343,6 +366,7 @@ function _resetState() {
   state.lastPriceUsd = null;
   state.lastClaimableUsd = null;
   state.lastAccrued = null;
+  state.lastTrigger = null;
   state.startedAt = null;
   state.lastPhase = null;
 }
