@@ -153,6 +153,15 @@ const config = {
   // The bot pages through every holder; that is inherently slower than any
   // single API read and must not inherit a browser-facing timeout.
   holdersFetchTimeoutMs: num(process.env.HOLDERS_FETCH_TIMEOUT_MS, 45_000),
+  // And a patient retry budget, for the same reason. fetchJson defaults to 3
+  // tries a second apart, which is right for /stats where a visitor is waiting.
+  // This call happens AFTER the escrow is claimed and the gas leg swapped, so
+  // giving up in ~3 seconds fails the cycle at its most expensive moment and
+  // strands the claim in the wallet — recoverable only by hand, via
+  // scripts/recover.js. Blockscout answering 504 four times running has done
+  // exactly that. Roughly 15 seconds of cover for a fast-failing upstream.
+  holdersFetchRetries: num(process.env.HOLDERS_FETCH_RETRIES, 6),
+  holdersFetchRetryMs: num(process.env.HOLDERS_FETCH_RETRY_MS, 2500),
   holdersTtlMs: num(process.env.HOLDERS_TTL_MS, 120_000),
 
   // ── Pons rewards ("Total NVDA Rewarded") ───────────────────────────────────

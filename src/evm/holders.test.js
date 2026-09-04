@@ -64,3 +64,31 @@ test('the holder enumeration is given far longer than a browser-facing read', as
     'it must not inherit the browser-facing default'
   );
 });
+
+// ── the retry budget has to survive a Blockscout wobble ───────────────────
+
+const { fetchAllHolders } = require('./holders');
+const cfg = require('../config');
+
+test('the holders fetch is patient, because it runs AFTER the money moves', async () => {
+  // fetchJson defaults to 3 retries a second apart — right for /stats, where a
+  // visitor is waiting and slow means broken. This call happens after the escrow
+  // has been claimed and the gas leg swapped, so giving up in ~3 seconds fails
+  // the cycle at its most expensive moment and strands the claim in the wallet,
+  // recoverable only by hand via scripts/recover.js.
+  //
+  // Seen live: Blockscout returned 504 four times in a row and took the cycle
+  // with it.
+  const calls = [];
+  await fetchAllHolders('0xtoken', {
+    fetchJson: async (url, opts) => {
+      calls.push(opts);
+      return { items: [], next_page_params: null };
+    },
+  });
+
+  assert.strictEqual(calls.length, 1);
+  assert.ok(calls[0].retries >= 6, `expected a patient retry budget, got ${calls[0].retries}`);
+  assert.ok(calls[0].delayMs >= 2000, `and a real gap between tries, got ${calls[0].delayMs}`);
+  assert.strictEqual(calls[0].timeoutMs, cfg.holdersFetchTimeoutMs, 'and the generous timeout it already had');
+});

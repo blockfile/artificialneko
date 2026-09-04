@@ -39,7 +39,8 @@ function countOwners(accounts) {
 
 // On-chain (via explorer): every holder of `token`, following pagination.
 // Returns [{ owner, amountRaw }].
-async function fetchAllHolders(token) {
+async function fetchAllHolders(token, deps = {}) {
+  const get = deps.fetchJson || fetchJson;
   const base = `${config.explorerApi}/api/v2/tokens/${token}/holders`;
   const out = [];
   let params = null;
@@ -56,9 +57,12 @@ async function fetchAllHolders(token) {
       // ALLOWED to be slow. A 6s default aborted this mid-cycle and failed the
       // whole run AFTER the escrow had been claimed and the gas leg swapped -
       // the most expensive moment to fail.
-      data = await fetchJson(url, {
+      data = await get(url, {
         headers: { accept: 'application/json' },
         timeoutMs: config.holdersFetchTimeoutMs,
+        // Patient on purpose — see the note on holdersFetchRetries in config.
+        retries: config.holdersFetchRetries,
+        delayMs: config.holdersFetchRetryMs,
       });
     } catch (err) {
       throw new Error(`holders fetch failed (${err.status || err.message}) for ${token}`);
