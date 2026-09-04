@@ -90,7 +90,15 @@ app.use((err, req, res, next) => {
     return res.status(403).json({ error: 'origin not allowed' });
   }
   console.error('[artificialneko] request error:', err);
-  res.status(500).json({ error: err.message });
+  // Logged in full, answered in general. `err.message` routinely carries the
+  // MongoDB connection string's host, an RPC URL, or a filesystem path — none of
+  // which a caller has any business learning from a failed request. The operator
+  // gets the detail from the log, where it belongs.
+  //
+  // The BOT's error handler deliberately still echoes the message: it is bound
+  // to 127.0.0.1 behind an API key, anyone reaching it already has shell access,
+  // and POST /run is unusable without knowing why a cycle failed.
+  res.status(500).json({ error: 'internal error' });
 });
 
 let server;
