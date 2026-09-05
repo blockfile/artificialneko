@@ -234,3 +234,48 @@ test('the reward total is served as TOKENS and its USD value separately', () => 
   assert.strictEqual(out.rewardDistributed, 12.5, 'the NVDA amount, for the $NVDA label');
   assert.strictEqual(out.rewardUsd, 2250, 'and its USD value, for the subtitle');
 });
+
+// ── which pool prices the token ──────────────────────────────────────────
+const { parsePairs } = require('../services/marketdata');
+
+const NVDA = '0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec';
+const NEKO = '0xc6e8c393d46b685c2fb2177f759f2b16eb7a7d54';
+const pair = (quote, price, mcap, liq) => ({
+  chainId: 'robinhood',
+  baseToken: { address: NEKO },
+  quoteToken: { address: quote },
+  priceUsd: String(price),
+  marketCap: mcap,
+  liquidity: { usd: liq },
+});
+
+test('the launch pair prices the token, however deep another pool is', () => {
+  // Live: DexScreener returned 16 NEKO pairs. The deepest was a NEKO/ETH pool
+  // with $35.8M liquidity quoting $3.22 — 4,800x the real price — which put the
+  // site's market cap at $3.2 BILLION against a true ~$676K. Pons launched NEKO
+  // paired with NVDA; that pool is the market, and depth alone cannot say so.
+  const out = parsePairs(
+    { pairs: [pair('0x0000000000000000000000000000000000000000', 3.22, 3_229_256_427, 35_825_285), pair(NVDA, 0.0006732, 676_040, 71_729)] },
+    NEKO,
+    'robinhood'
+  );
+  assert.strictEqual(out.marketCap, 676_040, 'the NVDA pair wins on identity, not depth');
+  assert.strictEqual(out.priceUsd, 0.0006732);
+});
+
+test('the liquidity floor still applies within the launch pair', () => {
+  // A dust NVDA pool is no more trustworthy than a dust ETH one.
+  const out = parsePairs({ pairs: [pair(NVDA, 0.5, 500_000_000, 3.32)] }, NEKO, 'robinhood');
+  assert.strictEqual(out.marketCap, null, 'below MIN_PAIR_LIQUIDITY_USD is no answer at all');
+});
+
+test('with no launch pair listed, the deepest real pool is still used', () => {
+  // Before the NVDA pair is indexed there may be nothing else to go on, and a
+  // deep pool is better than nothing — this is only a preference, not a filter.
+  const out = parsePairs(
+    { pairs: [pair('0x0000000000000000000000000000000000000000', 0.0006776, 677_601, 4_920)] },
+    NEKO,
+    'robinhood'
+  );
+  assert.strictEqual(out.marketCap, 677_601);
+});

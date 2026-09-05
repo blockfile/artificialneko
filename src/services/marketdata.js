@@ -44,7 +44,24 @@ function parsePairs(data, token, chainId) {
   // Returning EMPTY rather than the thin pair matters: the caller falls back to
   // the curve price, which is authoritative before graduation. A number from a
   // three-dollar pool is worse than no number, because it looks like one.
-  const p = ours.find((x) => (toNumber(x.liquidity && x.liquidity.usd) ?? 0) >= config.minPairLiquidityUsd);
+  const deepEnough = (x) => (toNumber(x.liquidity && x.liquidity.usd) ?? 0) >= config.minPairLiquidityUsd;
+
+  // Depth alone picks the WRONG pool. Live, DexScreener listed 16 NEKO pairs and
+  // the deepest was a NEKO/ETH pool with $35.8M of liquidity quoting $3.22 a
+  // token — 4,800x the real price — which put the site's market cap at $3.2
+  // BILLION against a true ~$676K. Anyone can open a pool with any ratio, and a
+  // deep one is not thereby the market.
+  //
+  // The launch settles it: pons priced NEKO in NVDA, so the NEKO/NVDA pool IS
+  // where it trades and every other pair is a side venue. Preference, not a
+  // filter — before that pair is indexed a deep pool is still better than
+  // nothing, and the liquidity floor applies either way.
+  const quoteToken = String(config.quoteTokenAddress || '').toLowerCase();
+  const launchPair = quoteToken
+    ? ours.filter((x) => String((x.quoteToken && x.quoteToken.address) || '').toLowerCase() === quoteToken)
+    : [];
+
+  const p = launchPair.find(deepEnough) || (launchPair.length ? null : ours.find(deepEnough));
   if (!p) return EMPTY;
   return {
     // marketCap is DexScreener's circulating figure; fdv is the fully-diluted
