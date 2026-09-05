@@ -85,7 +85,10 @@ async function main() {
     let reward = { skipped: true };
     if (holders > 0) {
       reward = await runRewardLeg(id, { launch, quoteAmount: holders });
-      log(`reward: ${summarizeReward(reward)}`);
+      // .note, not the object. summarizeReward returns {status, note} and
+      // interpolating it printed "reward: [object Object]" — the one line that
+      // says what the recovery did, unreadable at the moment you are watching it.
+      log(`reward: ${summarizeReward(reward).note}`);
     }
 
     let buyback = { burned: false };
