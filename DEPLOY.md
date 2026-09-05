@@ -400,6 +400,13 @@ cd /var/www/artificialneko
 git pull
 npm ci --omit=dev
 pm2 restart artificialneko-api artificialneko-bot --update-env
+
+# WAIT before checking anything. `pm2 restart` returns as soon as it signals the
+# process, but BOTH processes connect to MongoDB before they listen — on a
+# hosted URI that is a remote round trip. A curl on the next line gets a 502
+# from nginx, or an empty body, from an API that is starting perfectly normally.
+until curl -sf https://api.artificialneko.com/health >/dev/null; do sleep 1; done
+curl -s https://api.artificialneko.com/stats | head -c 200
 ```
 
 ## Operational watch-list
