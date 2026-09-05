@@ -184,8 +184,14 @@ const config = {
   // error: the index checks its balances against totalSupply() and refuses to
   // return a list that does not add up, then falls back to the explorer.
   holderIndexFromBlock: num(process.env.HOLDER_INDEX_FROM_BLOCK, 0),
-  // The RPC refused a 200,000-block getLogs and served 50,000 comfortably.
-  holderIndexChunk: num(process.env.HOLDER_INDEX_CHUNK, 50_000),
+  // How many blocks per getLogs call. Providers cap this and they do NOT agree:
+  // the public RPC served 50,000 comfortably, while QuickNode answers anything
+  // over 10,000 with `eth_getLogs is limited to a 10,000 range` as a 413. The
+  // default is under the stricter limit so the index works on both out of the
+  // box — raise it on a provider you know is generous, since fewer, wider calls
+  // are faster. Getting it wrong is loud, not silent: the index fails, says so,
+  // and the explorer takes over.
+  holderIndexChunk: num(process.env.HOLDER_INDEX_CHUNK, 9_000),
   holdersTtlMs: num(process.env.HOLDERS_TTL_MS, 120_000),
 
   // ── Pons rewards ("Total NVDA Rewarded") ───────────────────────────────────

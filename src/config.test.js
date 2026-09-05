@@ -121,3 +121,13 @@ test('the trigger cadence is an ordinary cron string, so any interval works', ()
   assert.strictEqual(loadConfig({ TRIGGER_SCHEDULE: '*/30 * * * *', DRY_RUN: 'true' }).triggerSchedule, '*/30 * * * *');
   assert.strictEqual(loadConfig({ TRIGGER_SCHEDULE: '*/20 * * * *', DRY_RUN: 'true' }).triggerSchedule, '*/20 * * * *');
 });
+
+test('the log chunk fits the strictest RPC we have met, not the most generous', () => {
+  // QuickNode answers anything over 10,000 blocks with
+  // `eth_getLogs is limited to a 10,000 range` as a 413. A default tuned to the
+  // public RPC's 50,000 made the holder index unusable on the provider actually
+  // in production — it failed loudly and fell back, but never once worked.
+  const config = loadConfig({ DRY_RUN: 'true' });
+  assert.ok(config.holderIndexChunk <= 10_000, `must fit a 10,000 cap, got ${config.holderIndexChunk}`);
+  assert.ok(config.holderIndexChunk >= 1_000, 'but not so small the backfill takes forever');
+});
