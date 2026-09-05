@@ -162,6 +162,16 @@ const config = {
   // exactly that. Roughly 15 seconds of cover for a fast-failing upstream.
   holdersFetchRetries: num(process.env.HOLDERS_FETCH_RETRIES, 6),
   holdersFetchRetryMs: num(process.env.HOLDERS_FETCH_RETRY_MS, 2500),
+  // A ceiling on the WHOLE listing, because per-page patience multiplies. The
+  // explorer pages 50 holders at a time, so a token with 1,815 holders is ~37
+  // sequential requests; a generous per-page budget across all of them turned a
+  // slow explorer into a cycle that held the run lock for hours, dropping every
+  // trigger tick behind it while the claim sat stranded in the wallet.
+  //
+  // A cycle that fails in minutes is recoverable and visible. One that hangs is
+  // neither. Four minutes is ~6x the normal listing time at current holder
+  // counts, and still far inside any sane TRIGGER_SCHEDULE.
+  holdersFetchDeadlineMs: num(process.env.HOLDERS_FETCH_DEADLINE_MS, 240_000),
   holdersTtlMs: num(process.env.HOLDERS_TTL_MS, 120_000),
 
   // ── Pons rewards ("Total NVDA Rewarded") ───────────────────────────────────

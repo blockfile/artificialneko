@@ -41,11 +41,23 @@ function countOwners(accounts) {
 // Returns [{ owner, amountRaw }].
 async function fetchAllHolders(token, deps = {}) {
   const get = deps.fetchJson || fetchJson;
+  const now = deps.now || Date.now;
+  const deadlineMs = deps.deadlineMs !== undefined ? deps.deadlineMs : config.holdersFetchDeadlineMs;
+  const startedAt = now();
   const base = `${config.explorerApi}/api/v2/tokens/${token}/holders`;
   const out = [];
   let params = null;
   let guard = 0;
   do {
+    // Checked per page, so the retries below can be patient about ONE request
+    // without the whole listing becoming unbounded.
+    const elapsed = now() - startedAt;
+    if (elapsed > deadlineMs) {
+      throw new Error(
+        `holders fetch gave up after ${Math.round(elapsed / 1000)}s ` +
+          `(${out.length} holders over ${guard} pages, deadline ${Math.round(deadlineMs / 1000)}s) for ${token}`
+      );
+    }
     const url = params ? `${base}?${new URLSearchParams(params).toString()}` : base;
     // Retry transient explorer errors (Blockscout/Cloudflare 520/5xx/429) so a
     // blip doesn't fail the whole cycle after the claim has already happened.

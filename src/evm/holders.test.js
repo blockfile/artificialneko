@@ -92,3 +92,23 @@ test('the holders fetch is patient, because it runs AFTER the money moves', asyn
   assert.ok(calls[0].delayMs >= 2000, `and a real gap between tries, got ${calls[0].delayMs}`);
   assert.strictEqual(calls[0].timeoutMs, cfg.holdersFetchTimeoutMs, 'and the generous timeout it already had');
 });
+
+test('the holders fetch gives up as a WHOLE, not just per page', async () => {
+  // Per-request patience multiplies. At 1,815 holders that is ~37 sequential
+  // pages, and a generous per-page budget turned a slow explorer into a cycle
+  // that held the run lock for hours — every trigger tick dropped behind it,
+  // and the claim stranded in the wallet the entire time.
+  //
+  // A cycle that fails in minutes is recoverable and visible. One that hangs
+  // is neither.
+  const slow = async () => {
+    await new Promise((r) => setTimeout(r, 30));
+    return { items: [{ address: { hash: '0x1' }, value: '1' }], next_page_params: { page: 2 } };
+  };
+
+  await assert.rejects(
+    () => fetchAllHolders('0xtoken', { fetchJson: slow, deadlineMs: 120, now: () => Date.now() }),
+    /gave up|deadline/i,
+    'an endless pager must end the fetch, not run until the next trigger tick'
+  );
+});
