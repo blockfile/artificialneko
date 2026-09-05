@@ -112,3 +112,42 @@ test('the holders fetch gives up as a WHOLE, not just per page', async () => {
     'an endless pager must end the fetch, not run until the next trigger tick'
   );
 });
+
+// ── the index must not become a new way to fail ───────────────────────────
+
+const { listAccounts } = require('./holders');
+
+test('a broken index falls back to the explorer rather than failing the cycle', async () => {
+  // The index is faster and checkable, but it is an addition, not a new
+  // dependency to be taken hostage by. If it cannot vouch for its answer the
+  // cycle still runs — slower, on the explorer, exactly as it did before.
+  let explorerCalled = 0;
+  const out = await listAccounts('0xtoken', {
+    holderIndexFromBlock: 100,
+    buildHolderIndex: async () => { throw new Error('balances do not add up to totalSupply'); },
+    fetchAllHolders: async () => { explorerCalled += 1; return [{ owner: '0xa', amountRaw: '5' }]; },
+  });
+  assert.strictEqual(explorerCalled, 1);
+  assert.deepStrictEqual(out, [{ owner: '0xa', amountRaw: '5' }]);
+});
+
+test('a healthy index means the explorer is never touched', async () => {
+  let explorerCalled = 0;
+  const out = await listAccounts('0xtoken', {
+    holderIndexFromBlock: 100,
+    buildHolderIndex: async () => ({ holders: [{ owner: '0xa', balanceRaw: '7' }], indexedEvents: 3 }),
+    fetchAllHolders: async () => { explorerCalled += 1; return []; },
+  });
+  assert.strictEqual(explorerCalled, 0, 'the whole point is not calling it');
+  assert.deepStrictEqual(out, [{ owner: '0xa', amountRaw: '7' }], 'and the explorer shape is preserved');
+});
+
+test('with no start block configured the index is not attempted at all', async () => {
+  let indexCalled = 0;
+  await listAccounts('0xtoken', {
+    holderIndexFromBlock: 0,
+    buildHolderIndex: async () => { indexCalled += 1; return { holders: [], indexedEvents: 0 }; },
+    fetchAllHolders: async () => [{ owner: '0xa', amountRaw: '1' }],
+  });
+  assert.strictEqual(indexCalled, 0, 'unset means the old behaviour, unchanged');
+});

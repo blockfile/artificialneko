@@ -8,6 +8,7 @@
 const config = require('../config');
 const { wallet } = require('./provider');
 const { fetchJson } = require('../services/fetchJson');
+const { buildHolderIndex } = require('./holderindex');
 
 // Pure: collapse token holdings to per-owner balances, drop excluded owners and
 // balances below `minHoldRaw`. `accounts`: [{ owner, amountRaw }]. `excludeSet`:
@@ -93,7 +94,7 @@ async function fetchAllHolders(token, deps = {}) {
  * @param {{token: string, minHoldRaw: string|bigint, exclude: Set<string>|string[]}} opts
  * @returns {Promise<{holders: {owner:string, balanceRaw:string}[], totalHolders: number}>}
  */
-async function snapshotEligibleHolders({ token, minHoldRaw, exclude }) {
+async function snapshotEligibleHolders({ token, minHoldRaw, exclude }, opts = {}) {
   const excludeSet =
     exclude instanceof Set ? exclude : new Set((exclude || []).map((a) => String(a).toLowerCase()));
 
@@ -107,8 +108,37 @@ async function snapshotEligibleHolders({ token, minHoldRaw, exclude }) {
     return { holders: filterEligible(sim, minHoldRaw, excludeSet), totalHolders: countOwners(sim) };
   }
 
-  const accounts = await fetchAllHolders(token);
+  const accounts = await listAccounts(token, opts);
   return { holders: filterEligible(accounts, minHoldRaw, excludeSet), totalHolders: countOwners(accounts) };
 }
 
-module.exports = { filterEligible, countOwners, fetchAllHolders, snapshotEligibleHolders };
+/**
+ * Every holder and balance: from the chain index when one is configured and
+ * healthy, otherwise from the explorer.
+ *
+ * The index is preferred because it is faster, served by an RPC we pay for
+ * rather than a shared public service, and — the part that matters — CHECKABLE
+ * against totalSupply(). But it is not allowed to be a new way to fail: if it
+ * cannot vouch for its own answer it throws, and this falls back to the
+ * explorer, which is slower but no worse than what came before.
+ */
+async function listAccounts(token, deps = {}) {
+  const indexed = deps.buildHolderIndex || buildHolderIndex;
+  const paged = deps.fetchAllHolders || fetchAllHolders;
+  const fromBlock =
+    deps.holderIndexFromBlock !== undefined ? deps.holderIndexFromBlock : config.holderIndexFromBlock;
+
+  if (fromBlock > 0) {
+    try {
+      const { holders, indexedEvents } = await indexed({ token });
+      console.log(`[holders] indexed from the chain: ${holders.length} holders (+${indexedEvents} new transfers)`);
+      // The explorer's shape, so filterEligible and countOwners are untouched.
+      return holders.map((h) => ({ owner: h.owner, amountRaw: h.balanceRaw }));
+    } catch (err) {
+      console.warn(`[holders] chain index unusable (${err.message}) — falling back to the explorer`);
+    }
+  }
+  return paged(token);
+}
+
+module.exports = { filterEligible, countOwners, fetchAllHolders, listAccounts, snapshotEligibleHolders };

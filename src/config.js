@@ -172,6 +172,20 @@ const config = {
   // neither. Four minutes is ~6x the normal listing time at current holder
   // counts, and still far inside any sane TRIGGER_SCHEDULE.
   holdersFetchDeadlineMs: num(process.env.HOLDERS_FETCH_DEADLINE_MS, 240_000),
+
+  // Derive holders from Transfer logs instead of asking the explorer. Set this
+  // to the block the token was DEPLOYED in and the bot indexes the chain
+  // itself — measured on this chain, 50,000 blocks of logs in 872ms, so a
+  // whole token history is seconds and each later cycle is one small call.
+  //
+  // 0 disables it and the explorer is used, which is the old behaviour.
+  //
+  // Starting later than the deployment misses the mint. That is not a silent
+  // error: the index checks its balances against totalSupply() and refuses to
+  // return a list that does not add up, then falls back to the explorer.
+  holderIndexFromBlock: num(process.env.HOLDER_INDEX_FROM_BLOCK, 0),
+  // The RPC refused a 200,000-block getLogs and served 50,000 comfortably.
+  holderIndexChunk: num(process.env.HOLDER_INDEX_CHUNK, 50_000),
   holdersTtlMs: num(process.env.HOLDERS_TTL_MS, 120_000),
 
   // ── Pons rewards ("Total NVDA Rewarded") ───────────────────────────────────

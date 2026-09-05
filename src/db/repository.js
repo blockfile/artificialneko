@@ -320,6 +320,29 @@ async function setDistributionState(patch) {
   );
 }
 
+/**
+ * The holder index: every balance, and the block they were correct at.
+ *
+ * Written together and never apart. The index is a fold over an append-only
+ * log, so it is not idempotent — re-applying a block doubles it — and the ONLY
+ * thing that keeps it honest is lastBlock advancing past exactly what was
+ * applied. A balance map saved without its block, or a block saved without its
+ * balances, is a wrong airdrop waiting to happen.
+ */
+async function getHolderIndex(token) {
+  const db = getDb();
+  return db.collection('holderindex').findOne({ _id: String(token).toLowerCase() }, { projection: { _id: 0 } });
+}
+
+async function setHolderIndex(token, { lastBlock, balances }) {
+  const db = getDb();
+  await db.collection('holderindex').updateOne(
+    { _id: String(token).toLowerCase() },
+    { $set: { lastBlock, balances, at: new Date().toISOString() } },
+    { upsert: true }
+  );
+}
+
 async function getDistributionState() {
   const db = getDb();
   return db.collection('state').findOne({ _id: 'distribution' }, { projection: { _id: 0 } });
@@ -358,6 +381,8 @@ module.exports = {
   setPendingBurn,
   getPendingBurn,
   getDistributionState,
+  getHolderIndex,
+  setHolderIndex,
   finishCycle,
   addStep,
   getBurnTotal,

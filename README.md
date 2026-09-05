@@ -312,6 +312,29 @@ Everything is documented in `.env.example`. The ones worth knowing first:
 | `GAS_RESERVE_ETH` | `0.01` | below this the cycle refuses to start |
 | `DRY_RUN` | `true` | simulate everything; the default everywhere |
 
+## Where the holder list comes from
+
+The airdrop needs every holder and balance. Two sources, in order:
+
+| | |
+| --- | --- |
+| **Chain index** (`HOLDER_INDEX_FROM_BLOCK`) | Transfer logs replayed on your own RPC |
+| **Explorer** (fallback) | Blockscout, 50 holders a page |
+
+The index is preferred for speed — NEKO's whole history is 33,412 transfers in
+20s, and each later cycle only reads new blocks, about 2.7s — but the reason it
+exists is that it can be **checked**. Balances must sum to `totalSupply()`
+before a single NVDA moves; if they do not, the index refuses its own answer and
+the explorer is used instead. There is no equivalent check on what an explorer
+returns: a short list is paid as a short list.
+
+Set it to the block the token was deployed in. Leave it at `0` and nothing
+changes — the explorer is used exactly as before.
+
+The index is a fold over an append-only log, so it is **not idempotent**:
+re-applying a block doubles it. Correctness rests on `lastBlock` advancing past
+exactly what was applied, which is why the stored record always carries both.
+
 ## Airdrop at scale
 
 Without `DISPERSE_ADDRESS`, the airdrop sends one ERC-20 transfer per recipient
